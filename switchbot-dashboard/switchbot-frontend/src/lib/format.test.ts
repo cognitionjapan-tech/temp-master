@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildTimeTicks, formatClock, formatTimestamp, pad2, toChartPoints } from './format';
+import {
+  buildTimeTicks,
+  formatClock,
+  formatTemperatureTick,
+  buildTemperatureAxis,
+  formatTimestamp,
+  pad2,
+  toChartPoints,
+} from './format';
 
 describe('pad2', () => {
   it('zero-pads single digits', () => {
@@ -60,5 +68,30 @@ describe('buildTimeTicks', () => {
 
   it('returns undefined for a single point', () => {
     expect(buildTimeTicks([{ time: 0, temperature: 1 }])).toBeUndefined();
+  });
+});
+
+describe('buildTemperatureAxis', () => {
+  const pts = (temps: (number | null)[]) => temps.map((temperature, i) => ({ time: i, temperature }));
+
+  it('変化が小さくても 0.5°C 刻みの均等な目盛りになり、ラベルが重複しない', () => {
+    const axis = buildTemperatureAxis(pts([26.82, 26.85, 26.88]));
+    expect(axis?.ticks).toEqual([26.5, 27]);
+    expect(axis?.domain).toEqual([26.5, 27]);
+    const labels = axis!.ticks.map(formatTemperatureTick);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it('範囲が広い場合は目盛り数が上限以内になる刻みを選ぶ', () => {
+    const axis = buildTemperatureAxis(pts([12.3, null, 29.9]));
+    expect(axis?.ticks).toEqual([10, 15, 20, 25, 30]);
+  });
+
+  it('全点が同じ値でも上下に余白を取る', () => {
+    expect(buildTemperatureAxis(pts([25, 25]))?.ticks).toEqual([24.5, 25, 25.5]);
+  });
+
+  it('有効な温度がなければ undefined', () => {
+    expect(buildTemperatureAxis(pts([null]))).toBeUndefined();
   });
 });

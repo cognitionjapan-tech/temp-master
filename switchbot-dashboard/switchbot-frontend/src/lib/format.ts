@@ -78,3 +78,40 @@ export function buildTimeTicks(points: ChartPoint[], count = 6): number[] | unde
   const step = (max - min) / (count - 1);
   return Array.from({ length: count }, (_, i) => Math.round(min + step * i));
 }
+
+const TEMPERATURE_TICK_STEPS = [0.5, 1, 2, 5, 10, 20];
+
+// 温度変化が小さくても目盛りが重複しないよう、0.5°C 以上の刻みで均等な目盛りを作る
+export function buildTemperatureAxis(
+  points: ChartPoint[],
+  maxTicks = 5,
+): { domain: [number, number]; ticks: number[] } | undefined {
+  const values = points
+    .map((p) => p.temperature)
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+  if (values.length === 0) return undefined;
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const step =
+    TEMPERATURE_TICK_STEPS.find(
+      (s) => Math.ceil(max / s) * s - Math.floor(min / s) * s <= s * (maxTicks - 1),
+    ) ?? TEMPERATURE_TICK_STEPS[TEMPERATURE_TICK_STEPS.length - 1];
+
+  let lo = Math.floor(min / step) * step;
+  let hi = Math.ceil(max / step) * step;
+  if (hi === lo) {
+    lo -= step;
+    hi += step;
+  }
+
+  const ticks: number[] = [];
+  for (let v = lo; v <= hi + step / 2; v += step) {
+    ticks.push(Number(v.toFixed(2)));
+  }
+  return { domain: [ticks[0], ticks[ticks.length - 1]], ticks };
+}
+
+export function formatTemperatureTick(value: number): string {
+  return `${Number(value.toFixed(1))}\u00b0`;
+}

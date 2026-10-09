@@ -98,3 +98,10 @@ Expected: 97 tests pass.
 - Frontend: React 18 + TypeScript + Vite, Tailwind CSS, Recharts, TanStack Query (`switchbot-frontend/src`)
 - Deployment: Fly.io (see `fly.toml`)
 - Background data collection runs with 120s interval, with rate limiting and exponential backoff
+
+## E2E Screenshot Tips
+
+- 日本語の工場機械名が豆腐（□）になる場合は `sudo apt-get install -y fonts-noto-cjk` 後に Chrome を再起動する（`chrome://restart`）。リロードだけではフォントのフォールバックが更新されないことがある。
+- CDP の `captureBeyondViewport` でフルページ撮影すると Recharts の SVG が抜けることがある。通常のビューポート撮影と比較し、抜けている場合は device metrics を文書全高に一時変更して、ResizeObserver とアニメーションフレームの反映を待ってから `captureBeyondViewport: false` で撮影する。撮影だけの欠落をアプリ不具合として報告しない。
+- 表示名はマッピング後の名前（例: 夢男 → 熱交換器 (E-301)）。未更新メーターなどの確認は表示名ではなく `data-device-id` で行う（同じ表示名を持つ物理デバイスが複数ある）。
+- Shelf ビューは Bedroom Meter / Living Meter を意図的に除外するため、グラフ数は Default と一致しない。

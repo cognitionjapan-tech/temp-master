@@ -2,7 +2,13 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import type { TimeScale } from '../api/types';
 import { useHistory } from '../hooks/useDashboardData';
 import { useTheme } from '../hooks/useTheme';
-import { buildTimeTicks, formatTimestamp, toChartPoints } from '../lib/format';
+import {
+  buildTimeTicks,
+  buildTemperatureAxis,
+  formatTemperatureTick,
+  formatTimestamp,
+  toChartPoints,
+} from '../lib/format';
 
 interface MeterChartProps {
   deviceId: string;
@@ -16,6 +22,7 @@ export function MeterChart({ deviceId, timeScale, height = 200 }: MeterChartProp
 
   const points = toChartPoints(data?.history ?? []);
   const ticks = buildTimeTicks(points);
+  const temperatureAxis = buildTemperatureAxis(points);
 
   let overlay: string | null = null;
   if (isPending) overlay = 'Loading chart...';
@@ -60,8 +67,9 @@ export function MeterChart({ deviceId, timeScale, height = 200 }: MeterChartProp
             <YAxis
               tick={{ fill: palette.tick, fontSize: theme === 'contrast' ? 12 : 10 }}
               stroke={palette.grid}
-              tickFormatter={(v: number) => `${Number(v.toFixed(1))}\u00b0`}
-              domain={['auto', 'auto']}
+              tickFormatter={formatTemperatureTick}
+              domain={temperatureAxis?.domain ?? ['auto', 'auto']}
+              ticks={temperatureAxis?.ticks}
               width={48}
             />
             <Tooltip
