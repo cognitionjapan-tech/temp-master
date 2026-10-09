@@ -15,7 +15,7 @@ import httpx
 from dotenv import load_dotenv
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -29,9 +29,14 @@ SWITCHBOT_API_BASE = "https://api.switch-bot.com/v1.1"
 SWITCHBOT_TOKEN = os.getenv("SWITCHBOT_TOKEN", "")
 SWITCHBOT_SECRET = os.getenv("SWITCHBOT_SECRET", "")
 
+ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN", "")
+
 DATA_COLLECTION_INTERVAL = 3600
 RATE_LIMIT_BACKOFF_BASE = 60
 MAX_BACKOFF = 600
+
+MAX_IMPORT_DEVICES = 100
+MAX_IMPORT_READINGS = 100000
 
 METER_DEVICE_TYPES = ["Meter", "MeterPlus", "WoIOSensor", "Meter Plus (JP)", "Meter Pro", "Meter Pro CO2", "Hub 2"]
 
@@ -729,9 +734,34 @@ class ImportData(BaseModel):
     devices: list[ImportDeviceData]
 
 
-@app.post("/api/import")
+async def require_admin(authorization: Optional[str] = Header(default=None)):
+    """管理者用エンドポイントの Bearer トークン認証（未設定時は fail-closed）。"""
+    # テストで差し替えられるよう実行時にモジュール変数を参照する
+    if not ADMIN_API_TOKEN:
+        raise HTTPException(status_code=503, detail="Admin API is not configured")
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token or not hmac.compare_digest(token.encode(), ADMIN_API_TOKEN.encode()):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing admin token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+@app.post("/api/import", dependencies=[Depends(require_admin)])
 async def import_data(data: ImportData):
     """Import historical data from another backend instance."""
+    if len(data.devices) > MAX_IMPORT_DEVICES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many devices: maximum is {MAX_IMPORT_DEVICES}",
+        )
+    if sum(len(d.readings) for d in data.devices) > MAX_IMPORT_READINGS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many readings: maximum is {MAX_IMPORT_READINGS}",
+        )
+
     imported_devices = 0
     imported_readings = 0
     
@@ -773,7 +803,7 @@ async def import_data(data: ImportData):
     }
 
 
-@app.get("/api/backup")
+@app.get("/api/backup", dependencies=[Depends(require_admin)])
 async def backup_database():
     """Download the SQLite database file for backup purposes."""
     if not os.path.exists(DB_PATH):
