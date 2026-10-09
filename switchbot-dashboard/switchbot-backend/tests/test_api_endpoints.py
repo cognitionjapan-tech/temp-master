@@ -350,6 +350,11 @@ class TestGetStatusEndpoint:
 
 
 class TestImportDataEndpoint:
+    @pytest.fixture(autouse=True)
+    def admin_token(self):
+        with patch("app.main.ADMIN_API_TOKEN", "test-admin-token"):
+            yield
+
     async def test_import_data_creates_devices(self, client, reset_data_store, temp_db_path):
         original_db_path = main_module.DB_PATH
         main_module.DB_PATH = temp_db_path
@@ -372,7 +377,7 @@ class TestImportDataEndpoint:
                 ]
             }
             
-            response = client.post("/api/import", json=import_data)
+            response = client.post("/api/import", json=import_data, headers={"Authorization": "Bearer test-admin-token"})
             
             assert response.status_code == 200
             data = response.json()
@@ -416,7 +421,7 @@ class TestImportDataEndpoint:
                 ]
             }
             
-            response = client.post("/api/import", json=import_data)
+            response = client.post("/api/import", json=import_data, headers={"Authorization": "Bearer test-admin-token"})
             
             assert response.status_code == 200
             data = response.json()
@@ -449,7 +454,7 @@ class TestImportDataEndpoint:
                 ]
             }
             
-            response = client.post("/api/import", json=import_data)
+            response = client.post("/api/import", json=import_data, headers={"Authorization": "Bearer test-admin-token"})
             
             assert response.status_code == 200
             data = response.json()
@@ -463,7 +468,7 @@ class TestImportDataEndpoint:
     def test_import_data_empty_devices(self, client, reset_data_store):
         import_data = {"devices": []}
         
-        response = client.post("/api/import", json=import_data)
+        response = client.post("/api/import", json=import_data, headers={"Authorization": "Bearer test-admin-token"})
         
         assert response.status_code == 200
         data = response.json()

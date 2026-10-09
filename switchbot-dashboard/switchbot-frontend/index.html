@@ -135,7 +135,6 @@
             </select>
           </div>
           <button type="button" id="btn-refresh" class="btn btn-primary">Refresh Data</button>
-          <button type="button" id="btn-backup" class="btn btn-default">Download Backup</button>
         </form>
       </div>
     </div>
@@ -661,10 +660,6 @@
           fetchData();
           $btn.prop('disabled', false).text('Refresh Data');
         });
-      });
-
-      $('#btn-backup').click(function() {
-        window.open(API_URL + '/api/backup', '_blank');
       });
     });
   </script>
