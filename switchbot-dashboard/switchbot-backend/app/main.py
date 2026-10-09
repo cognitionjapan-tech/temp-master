@@ -2,6 +2,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import math
 import os
 import time
 import uuid
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 load_dotenv()
@@ -32,6 +33,9 @@ SWITCHBOT_SECRET = os.getenv("SWITCHBOT_SECRET", "")
 DATA_COLLECTION_INTERVAL = 3600
 RATE_LIMIT_BACKOFF_BASE = 60
 MAX_BACKOFF = 600
+
+# 手動 refresh の連打による SwitchBot API クォータ枯渇を防ぐクールダウン
+REFRESH_COOLDOWN_SECONDS = int(os.getenv("REFRESH_COOLDOWN_SECONDS", "60"))
 
 METER_DEVICE_TYPES = ["Meter", "MeterPlus", "WoIOSensor", "Meter Plus (JP)", "Meter Pro", "Meter Pro CO2", "Hub 2"]
 
@@ -80,7 +84,8 @@ class DataStore:
         self.last_api_call: float = 0
         self.backoff_until: float = 0
         self.consecutive_errors: int = 0
-        self.is_collecting: bool = False
+        self.collect_lock: asyncio.Lock = asyncio.Lock()
+        self.last_manual_refresh: float = 0.0
         self.collection_task: Optional[asyncio.Task] = None
         self.db_initialized: bool = False
 
@@ -557,9 +562,15 @@ async def collect_data():
         pass
 
 
+async def collect_data_locked():
+    # 定期収集と手動 refresh の収集処理を直列化する
+    async with data_store.collect_lock:
+        await collect_data()
+
+
 async def background_collector():
     while True:
-        await collect_data()
+        await collect_data_locked()
         await asyncio.sleep(DATA_COLLECTION_INTERVAL)
 
 
@@ -645,9 +656,39 @@ async def get_meter_history(device_id: str, time_scale: TimeScale = TimeScale.HO
 async def refresh_meters():
     if not SWITCHBOT_TOKEN or not SWITCHBOT_SECRET:
         raise HTTPException(status_code=500, detail="SwitchBot credentials not configured")
-    
-    await collect_data()
-    
+
+    now = time.time()
+    cooldown_remaining = data_store.last_manual_refresh + REFRESH_COOLDOWN_SECONDS - now
+    if cooldown_remaining > 0:
+        retry_after = max(1, math.ceil(cooldown_remaining))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Refresh is cooling down. Retry after {retry_after} seconds",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    if data_store.collect_lock.locked():
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "already_running",
+                "message": "Data collection is already running",
+                "meters_count": len(data_store.devices),
+            },
+        )
+
+    if now < data_store.backoff_until:
+        retry_after = max(1, math.ceil(data_store.backoff_until - now))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limited. Retry after {retry_after} seconds",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    # locked() の確認からロック取得までの間に await を挟まないこと（原子性の担保）
+    data_store.last_manual_refresh = now
+    await collect_data_locked()
+
     return {
         "status": "ok",
         "message": "Data collection triggered",
